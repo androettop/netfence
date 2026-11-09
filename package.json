@@ -1,6 +1,6 @@
 {
   "name": "netfence",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Decky Loader plugin to block Internet and/or LAN access for Steam and games.",
   "type": "module",
   "scripts": {
@@ -11,7 +11,13 @@
     "type": "git",
     "url": "git+https://github.com/androettop/netfence.git"
   },
-  "keywords": ["decky", "plugin", "steam-deck", "firewall", "nftables"],
+  "keywords": [
+    "decky",
+    "plugin",
+    "steam-deck",
+    "firewall",
+    "nftables"
+  ],
   "author": "androettop",
   "license": "MIT",
   "devDependencies": {
@@ -29,7 +35,10 @@
   },
   "pnpm": {
     "peerDependencyRules": {
-      "ignoreMissing": ["react", "react-dom"]
+      "ignoreMissing": [
+        "react",
+        "react-dom"
+      ]
     }
   }
 }
