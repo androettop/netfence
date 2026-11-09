@@ -1,28 +1,19 @@
 import { PanelSection, PanelSectionRow, ToggleField, staticClasses } from "@decky/ui";
-import { callable, definePlugin } from "@decky/api";
-import { useEffect, useState } from "react";
+import { definePlugin } from "@decky/api";
+import { useState } from "react";
 
-type BlockKind = "block_lan" | "block_internet";
-
-interface Status {
-  block_lan: boolean;
-  block_internet: boolean;
-}
-
-const getStatus = callable<[], Status>("get_status");
-const setBlock = callable<[kind: BlockKind, value: boolean], Status>("set_block");
+import { FenceIcon } from "./icons";
+import { startIndicator } from "./indicator";
+import { patchQuickSettings } from "./quickSettings";
+import { BlockKind, refreshStatus, setBlock, useStatus } from "./status";
 
 function Content() {
-  const [status, setStatus] = useState<Status | null>(null);
+  const status = useStatus();
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    getStatus().then(setStatus).catch((e) => setError(String(e)));
-  }, []);
 
   const toggle = (kind: BlockKind) => async (value: boolean) => {
     try {
-      setStatus(await setBlock(kind, value));
+      await setBlock(kind, value);
       setError(null);
     } catch (e) {
       setError(String(e));
@@ -58,17 +49,31 @@ function Content() {
   );
 }
 
-function FenceIcon() {
-  return (
-    <svg width="1em" height="1em" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
-      <path d="M4 21V6l2-3 2 3v15M10 21V6l2-3 2 3v15M16 21V6l2-3 2 3v15M2 10h20M2 16h20" />
-    </svg>
-  );
-}
+export default definePlugin(() => {
+  refreshStatus().catch(() => undefined);
 
-export default definePlugin(() => ({
-  name: "NetFence",
-  titleView: <div className={staticClasses.Title}>NetFence</div>,
-  content: <Content />,
-  icon: <FenceIcon />,
-}));
+  const cleanups: Array<() => void> = [];
+  for (const start of [patchQuickSettings, startIndicator]) {
+    try {
+      cleanups.push(start());
+    } catch (e) {
+      console.warn("[NetFence] optional UI integration failed", e);
+    }
+  }
+
+  return {
+    name: "NetFence",
+    titleView: <div className={staticClasses.Title}>NetFence</div>,
+    content: <Content />,
+    icon: <FenceIcon width="1em" height="1em" />,
+    onDismount() {
+      cleanups.forEach((cleanup) => {
+        try {
+          cleanup();
+        } catch {
+          // ignore
+        }
+      });
+    },
+  };
+});
