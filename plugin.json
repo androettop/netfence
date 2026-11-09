@@ -6,6 +6,6 @@
   "publish": {
     "tags": ["root", "network", "offline"],
     "description": "Block Internet and/or LAN access for Steam and your games, instantly, from the Quick Access Menu.",
-    "image": "https://raw.githubusercontent.com/androettop/netfence/main/assets/qam.png"
+    "image": "https://raw.githubusercontent.com/androettop/netfence/main/assets/panel.png"
   }
 }
