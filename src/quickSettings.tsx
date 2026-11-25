@@ -9,8 +9,10 @@ import { setBlock, useStatus } from "./status";
 const SETTINGS_PANEL_MARKER = "GetControllers";
 const AIRPLANE_TOGGLE_MARKER = "SetAirplaneMode";
 const TOGGLE_KEY = "netfence-lan-only";
-const RETRY_MS = 2000;
-const MAX_ATTEMPTS = 60;
+// Steam can mount Quick Settings late or swap its component, so keep checking forever.
+// A check walks the React fiber tree, which takes a couple of milliseconds.
+const CHECK_MS = 3000;
+const PATCHED = Symbol("netfence-patched");
 
 const sourceCache = new WeakMap<Function, string>();
 
@@ -28,7 +30,10 @@ function fnSource(fn: unknown): string {
   return src;
 }
 
+const isPatched = (type: any): boolean => !!type?.[PATCHED];
+
 const isSettingsTab = (tab: any): boolean => {
+  if (isPatched(tab?.panel?.type)) return true;
   const src = fnSource(tab?.panel?.type);
   return src.includes(SETTINGS_PANEL_MARKER) && !src.startsWith("class");
 };
@@ -86,48 +91,54 @@ function insertToggle(tree: any) {
   ];
 }
 
+// One wrapper per original component so React sees a stable type across re-patches.
+const wrappers = new WeakMap<Function, Function>();
+
+function wrap(Original: any): Function {
+  let wrapper = wrappers.get(Original);
+  if (!wrapper) {
+    wrapper = function NetFenceQuickSettings(props: any) {
+      const tree = Original(props);
+      try {
+        insertToggle(tree);
+      } catch (e) {
+        console.warn("[NetFence] Quick Settings patch failed", e);
+      }
+      return tree;
+    };
+    (wrapper as any)[PATCHED] = Original;
+    wrappers.set(Original, wrapper);
+  }
+  return wrapper;
+}
+
 /** Adds a "LAN only" toggle under Airplane Mode in Quick Settings. Returns a cleanup function. */
 export function patchQuickSettings(): () => void {
-  let tab: any = null;
-  let original: any = null;
-  let patched: any = null;
-  let attempts = 0;
+  const patchedTabs = new Set<any>();
 
-  const tryPatch = (): boolean => {
+  const ensurePatched = () => {
     try {
-      tab = findSettingsTab();
-      if (!tab) return false;
-      original = tab.panel.type;
-      const Original = original;
-      patched = function NetFenceQuickSettings(props: any) {
-        const tree = Original(props);
-        try {
-          insertToggle(tree);
-        } catch (e) {
-          console.warn("[NetFence] Quick Settings patch failed", e);
-        }
-        return tree;
-      };
-      tab.panel.type = patched;
-      return true;
-    } catch (e) {
-      console.warn("[NetFence] Quick Settings patch unavailable", e);
-      return false;
+      const tab = findSettingsTab();
+      if (!tab || isPatched(tab.panel.type)) return;
+      tab.panel.type = wrap(tab.panel.type);
+      patchedTabs.add(tab);
+    } catch {
+      // Best effort: try again on the next check.
     }
   };
 
-  const timer = tryPatch()
-    ? null
-    : setInterval(() => {
-        if (tryPatch() || ++attempts >= MAX_ATTEMPTS) clearInterval(timer!);
-      }, RETRY_MS);
+  ensurePatched();
+  const timer = setInterval(ensurePatched, CHECK_MS);
 
   return () => {
-    if (timer) clearInterval(timer);
-    try {
-      if (tab?.panel?.type === patched) tab.panel.type = original;
-    } catch {
-      // ignore
-    }
+    clearInterval(timer);
+    patchedTabs.forEach((tab) => {
+      try {
+        const original = tab?.panel?.type?.[PATCHED];
+        if (original) tab.panel.type = original;
+      } catch {
+        // ignore
+      }
+    });
   };
 }
